@@ -1,8 +1,6 @@
 #include <Ticker.h>
 #include <B31DGMonitor.h>
 
-void CycleF();
-
 //Define Input Pins on ESP32C
 #define T1_LED 18
 #define T2_INPUT 0
@@ -13,9 +11,10 @@ void CycleF();
 Ticker Cycle; //Define Ticker 
 B31DGCyclicExecutiveMonitor monitor;  //Define Cyclic Executive Monitor
 
+float Freq_Input_High = 0;
 int T2_Freq = 0;  //Frequency Reading for Task 2
 int T3_Freq = 0;  //Frequency Reading for Task 3
-int T4_counter = 0; //Counter for Task 4
+unsigned int slot = 0;
 int T2_NextCycle = 0; //Variable to Prevent Task 2 and Task 3 running in the same frame
 
 //Reading Values for Task 4
@@ -23,24 +22,25 @@ double reading1 = 0;
 double reading2 = 0;
 double reading3 = 0;
 double reading4 = 0;
-double read_average;
+double read_average = 0;
 
 int frame_counter = 0;  //frame counter for cyclic executive operation
-
-//B31DGMonitor monitor;
 
 void setup(void)
 {
   Serial.begin(9600); // Starts the serial communication and sets baud rate to 9600
-  
+    
   //Setup Input and LED Pins
   pinMode(T1_LED, OUTPUT);
   pinMode(T2_INPUT, INPUT);
   pinMode(T3_INPUT, INPUT);
   pinMode(T4_INPUT, INPUT);
-  pinMode(T4_LED, OUTPUT); 
+  pinMode(T4_LED, OUTPUT);
 
-  //Cycle.attach(4000, CycleF); //Ticker Interrupts every 4000us (4ms)
+  Cycle.attach_ms(4, CycleF); //Ticker Interrupts every 4000us (4ms)
+  //Prevent Fale Violations from B31DG Monitor
+  task1(); 
+  delayMicroseconds(2000);
 
   monitor.startMonitoring(); // all the tasks should be released after this, this time can be queried using getTimeStart()
 }
@@ -61,45 +61,29 @@ void task1() {
 void task2() {
    monitor.jobStarted(2);
    //Perform task2 - Measure Frequency
-   int Freq_Input_High = pulseIn(T2_INPUT, HIGH);
-   //int Freq_Input_Low = pulseIn(T2_INPUT, LOW);
-   T2_Freq = 1 / (2*Freq_Input_High);
+   Freq_Input_High = pulseIn(T2_INPUT, HIGH, 4000);
+   T2_Freq = 1000000 / (2*Freq_Input_High); //Hz
+   //Serial.print(T2_Freq);
    monitor.jobEnded(2);
 }
 
 void task3() {
    monitor.jobStarted(3);
    //Perform task3 - Measure Frequency
-   int Freq_Input_High = pulseIn(T3_INPUT, HIGH);
-   //int Freq_Input_Low = pulseIn(T3_INPUT, LOW);
-   T3_Freq = 1 / (2*Freq_Input_High);
+   Freq_Input_High = pulseIn(T3_INPUT, HIGH, 4000); //us
+   T3_Freq = 1000000 / (2*Freq_Input_High);   //Hz
+   Serial.print(T3_Freq);
    monitor.jobEnded(3);
 }
 
 void task4() {
    monitor.jobStarted(4);
    //Perform task4 - Measure Potentiometer Signal
-   if (T4_counter == 4)  //Reset counter after 4 readings
-   {
-     T4_counter = 0;
-   }
-  //Obtain Potentiometer Readings
-  if (T4_counter == 0)
-  {
+  //Obtain Input Readings
     reading1 = analogRead(T4_INPUT);  //Read Analog Signal
-  }
-   else if (T4_counter == 1)
-  {
     reading2 = analogRead(T4_INPUT);  //Read Analog Signal
-  }
-    else if (T4_counter == 2)
-  {
     reading3 = analogRead(T4_INPUT);  //Read Analog Signal
-  }
-    else if (T4_counter == 3)
-  {
     reading4 = analogRead(T4_INPUT);  //Read Analog Signal
-  }
    read_average = (reading1 + reading2 + reading3 + reading4) / 4;  //Calculate average
 
   if (read_average > 2047)
@@ -110,17 +94,16 @@ void task4() {
   {
     digitalWrite(T4_LED, LOW); //Error LED Low
   }
-  Serial.printf("Average Reading = %d \n", read_average); // Display T2 and T3 Frequencies
+  //Serial.print(read_average);
    
-  T4_counter++;  //Increment Task 4 Counter
   monitor.jobEnded(4);
 }
 
 void task5() {
-   monitor.jobStarted(5);
    //Operate every 25 frames (100ms)
    if(frame_counter % 25 == 0)
    {
+     monitor.jobStarted(5);
      //Perform task5 - Display task2 and task3 frequencies
     //Set 333Hz as minimum threshold
      if(T2_Freq < 333)
@@ -144,7 +127,12 @@ void task5() {
       }
       T2_Freq = (T2_Freq - 333) * 0.127;  //Scaling to between 0 - 99
       T3_Freq = (T3_Freq - 500) * 0.198;   //Scaling to between 0 - 99
-      Serial.printf("T2 Frequency = %d, T3 Frequency = %d \n", T2_Freq, T3_Freq); // print T2 and T3 Frequencies
+      // print T2 and T3 Frequencies
+      Serial.print("\n T2 Frequency = ");
+      Serial.print(T2_Freq);
+      Serial.print("\n T3 Frequency = ");
+      Serial.print(T3_Freq);
+      Serial.print("\n");
       monitor.jobEnded(5);
    }
 }
@@ -162,14 +150,15 @@ void CycleF()
   //Task 1 is run every frame (4ms)
   //Task 2 and Task 3 are never run in the same frame as the time taken would exceed the frame length
   //Task 5 is called every 5 frames, however will only be run every 25 frames (100ms)
-  switch (frame_counter % 10)
+  slot = frame_counter % 10;
+  switch (slot)
   {
     case 0: task1();            task3();  task4();  task5();  break;
     case 1: task1();  task2();                                break; 
     case 2: task1();            task3();                      break;
     case 3: task1();                                          break;
     case 4: task1();            task3();                      break;
-    case 5: task1();  task2();            task4();            break;
+    case 5: task1();  task2();            task4();  task5();  break;
     case 6: task1();            task3();                      break;
     case 7: task1();                                          break;
     case 8: task1();            task3();                      break;
@@ -185,7 +174,7 @@ void loop(void)
   /*
   unsigned long bT = micros();
   for (int i=0; i<1; i++) {
-    task4();
+    task3();
   }
   unsigned long timeItTook = micros()-bT;
   Serial.print("Duration SerialOutput Job = ");
