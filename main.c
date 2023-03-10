@@ -1,7 +1,7 @@
 #include <Ticker.h>
 #include <B31DGMonitor.h>
 
-//Define Input Pins on ESP32C
+//Define Input and Output Pins on ESP32C
 #define T1_LED 18
 #define T2_INPUT 0
 #define T3_INPUT 1
@@ -11,10 +11,10 @@
 Ticker Cycle; //Define Ticker 
 B31DGCyclicExecutiveMonitor monitor;  //Define Cyclic Executive Monitor
 
-float Freq_Input_High = 0;
+float Freq_Input_High = 0;  //Variable for measuring time in Tasks 2 and 3
 int T2_Freq = 0;  //Frequency Reading for Task 2
 int T3_Freq = 0;  //Frequency Reading for Task 3
-unsigned int slot = 0;
+unsigned int slot = 0;  //Variable utilised in Cycle Function for executing frames
 int T2_NextCycle = 0; //Variable to Prevent Task 2 and Task 3 running in the same frame
 
 //Reading Values for Task 4
@@ -72,20 +72,21 @@ void task3() {
    //Perform task3 - Measure Frequency
    Freq_Input_High = pulseIn(T3_INPUT, HIGH, 4000); //us
    T3_Freq = 1000000 / (2*Freq_Input_High);   //Hz
-   Serial.print(T3_Freq);
+   //Serial.print(T3_Freq);
    monitor.jobEnded(3);
 }
 
 void task4() {
-   monitor.jobStarted(4);
-   //Perform task4 - Measure Potentiometer Signal
+  monitor.jobStarted(4);
+  //Perform task4 - Measure Potentiometer Signal
   //Obtain Input Readings
-    reading1 = analogRead(T4_INPUT);  //Read Analog Signal
-    reading2 = analogRead(T4_INPUT);  //Read Analog Signal
-    reading3 = analogRead(T4_INPUT);  //Read Analog Signal
-    reading4 = analogRead(T4_INPUT);  //Read Analog Signal
-   read_average = (reading1 + reading2 + reading3 + reading4) / 4;  //Calculate average
+  reading1 = analogRead(T4_INPUT);  //Read Analog Signal
+  reading2 = analogRead(T4_INPUT);  //Read Analog Signal
+  reading3 = analogRead(T4_INPUT);  //Read Analog Signal
+  reading4 = analogRead(T4_INPUT);  //Read Analog Signal
+  read_average = (reading1 + reading2 + reading3 + reading4) / 4;  //Calculate average
 
+  //If average reading is greater than half of maximum value (4095/2=2047)
   if (read_average > 2047)
   {
     digitalWrite(T4_LED, HIGH);  //Error LED High
@@ -95,7 +96,6 @@ void task4() {
     digitalWrite(T4_LED, LOW); //Error LED Low
   }
   //Serial.print(read_average);
-   
   monitor.jobEnded(4);
 }
 
